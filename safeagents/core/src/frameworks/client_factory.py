@@ -65,7 +65,11 @@ class ClientFactory:
         # OpenAI-compatible API (e.g. Gemini via base_url), see get_llm_config
         if "api_key" in llm_config:
             from langchain_openai.chat_models import ChatOpenAI
-            return ChatOpenAI(
+            from ..clients.gemini_openai import GeminiChatOpenAI
+
+            # Gemini needs its thought signatures sent back with tool calls
+            chat_class = GeminiChatOpenAI if "gemini" in (llm_config["model"] or "").lower() else ChatOpenAI
+            return chat_class(
                 model=llm_config["model"],
                 api_key=llm_config["api_key"],
                 base_url=llm_config["base_url"],
