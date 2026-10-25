@@ -134,7 +134,22 @@ class Team(ABC):
         """
         Get LLM configuration from environment variables.
         Uses shared utility for consistency across frameworks and assessment.
+
+        If LLM_API_KEY is set, uses any OpenAI-compatible API (e.g. Gemini) instead of Azure.
+        Only supported for the langgraph framework.
         """
+        import os
+        if os.getenv("LLM_API_KEY"):
+            if self.framework != Framework.LANGGRAPH:
+                raise ValueError("LLM_API_KEY is only supported for the langgraph framework.")
+            return {
+                "model": os.getenv("LLM_MODEL"),
+                "api_key": os.getenv("LLM_API_KEY"),
+                "base_url": os.getenv("LLM_BASE_URL") or None,  # None means the default OpenAI API
+                "temperature": float(os.getenv("LLM_TEMPERATURE", "0")),
+                "max_retries": int(os.getenv("LLM_MAX_RETRIES", "6")),
+            }
+
         from ..clients.azure_openai import get_azure_config
         return get_azure_config()
 

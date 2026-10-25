@@ -60,8 +60,19 @@ class ClientFactory:
             llm_config: LLM configuration dictionary
 
         Returns:
-            AzureChatOpenAI instance
+            ChatOpenAI instance if an API key is configured, otherwise AzureChatOpenAI instance
         """
+        # OpenAI-compatible API (e.g. Gemini via base_url), see get_llm_config
+        if "api_key" in llm_config:
+            from langchain_openai.chat_models import ChatOpenAI
+            return ChatOpenAI(
+                model=llm_config["model"],
+                api_key=llm_config["api_key"],
+                base_url=llm_config["base_url"],
+                temperature=llm_config["temperature"],
+                max_retries=llm_config["max_retries"],
+            )
+
         from langchain_openai.chat_models import AzureChatOpenAI
 
         # Transform config keys to LangGraph format
