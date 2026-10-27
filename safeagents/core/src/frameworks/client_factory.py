@@ -68,7 +68,7 @@ class ClientFactory:
             from ..clients.gemini_openai import GeminiChatOpenAI
 
             # Gemini needs its thought signatures sent back with tool calls
-            chat_class = GeminiChatOpenAI if "gemini" in (llm_config["model"] or "").lower() else ChatOpenAI
+            chat_class = GeminiChatOpenAI if "gemini" in llm_config["model"].lower() else ChatOpenAI
             return chat_class(
                 model=llm_config["model"],
                 api_key=llm_config["api_key"],

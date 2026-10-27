@@ -8,6 +8,10 @@ ChatOpenAI keeps the raw tool calls, signature included, in
 additional_kwargs["tool_calls"], but rebuilds outgoing tool calls without it,
 so we copy it back. Tool calls created by LangGraph itself (e.g. handoffs)
 never had a signature, so they get a placeholder value that Gemini accepts.
+
+This overrides private ChatOpenAI methods (_get_request_payload, _convert_input),
+so it is only tested with the pinned langchain-openai==0.3.35. Re-run
+ours/scripts/hello_world.py after upgrading langchain-openai.
 """
 from typing import Any, Optional
 

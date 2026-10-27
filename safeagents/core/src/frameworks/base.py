@@ -142,12 +142,20 @@ class Team(ABC):
         if os.getenv("LLM_API_KEY"):
             if self.framework != Framework.LANGGRAPH:
                 raise ValueError("LLM_API_KEY is only supported for the langgraph framework.")
+            model = os.getenv("LLM_MODEL")
+            base_url = os.getenv("LLM_BASE_URL") or None  # None means the default OpenAI API
+            if not model:
+                raise ValueError("LLM_MODEL must be set when LLM_API_KEY is set (see .env.example).")
+            # Without a base URL a Gemini key would be sent to OpenAI and fail with a 401
+            if "gemini" in model.lower() and not base_url:
+                raise ValueError("LLM_BASE_URL must be set for Gemini models (see .env.example).")
+            # `or` so that an empty value in .env falls back to the default
             return {
-                "model": os.getenv("LLM_MODEL"),
+                "model": model,
                 "api_key": os.getenv("LLM_API_KEY"),
-                "base_url": os.getenv("LLM_BASE_URL") or None,  # None means the default OpenAI API
-                "temperature": float(os.getenv("LLM_TEMPERATURE", "0")),
-                "max_retries": int(os.getenv("LLM_MAX_RETRIES", "6")),
+                "base_url": base_url,
+                "temperature": float(os.getenv("LLM_TEMPERATURE") or "0"),
+                "max_retries": int(os.getenv("LLM_MAX_RETRIES") or "6"),
             }
 
         from ..clients.azure_openai import get_azure_config
