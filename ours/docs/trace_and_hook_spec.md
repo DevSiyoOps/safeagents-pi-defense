@@ -6,6 +6,10 @@ the mock tools, configs A/B and unit tests only need the types and the trace for
 Scope: LangGraph, centralized (supervisor) architecture, normal agents only (no special agents
 like web_surfer), with our own mock tools.
 
+Model: `gemini-3.1-flash-lite` for every arm, pinned for the whole experiment (free tier:
+15 requests/min and 500 requests/day per key). Trials: 1 per case on the dev split (tuning and
+ablations) and 3 per case on the test split (final runs), as the proposal planned.
+
 ## 1. What we found in the code
 
 Versions pinned in `requirements.txt`: langgraph 0.6.11, langgraph-prebuilt 0.6.5,
@@ -223,7 +227,7 @@ attack text. We commit only summary CSVs.
     "arm": "C",
     "guard": {"provenance": true, "permissions": true, "schema": true, "classifier": false},
     "trial": 1,
-    "model": "gemini-3.5-flash",
+    "model": "gemini-3.1-flash-lite",
     "temperature": 0,
     "framework": "langgraph",
     "architecture": "centralized",
@@ -332,5 +336,5 @@ Per arm, over all runs without an API error, the proposal's metrics are:
    Yes: hello-world called `get_weather` through the supervisor and reported token counts
    (needs `GeminiChatOpenAI` for thought signatures).
 3. Do the hooks run for the supervisor as well as the workers?
-4. Gemini 3 can't turn thinking off, so runs at temperature 0 may still differ. The variance
-   pilot tells us how many trials we need.
+4. ~~How many trials do we need?~~ Repeated runs on `gemini-3.1-flash-lite` gave identical
+   results (PR #4 probe), so dev runs once and the test split keeps 3 trials (see the top).
