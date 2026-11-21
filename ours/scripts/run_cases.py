@@ -63,6 +63,10 @@ async def main(cases, pause, tools_mode, arm):
         try:
             result = await run_case(case, tools_mode, arm)
             ran = [c["tool"] for c in WORLD.executed]
+            if not ran:  # nothing ran at all: a stalled or failed run, not a real result
+                print(f"{case['case_id']:8} NO TOOLS RAN (not counted, re-run it)")
+                time.sleep(pause)
+                continue
             ok.append((case, result))
             print(f"{case['case_id']:8} {case['kind']:7} attack={result['attack']}  "
                   f"benign={result['benign']}  ran={ran}")
