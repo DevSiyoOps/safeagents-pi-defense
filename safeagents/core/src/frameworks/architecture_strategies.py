@@ -81,6 +81,7 @@ class CentralizedStrategy(ArchitectureStrategy):
             agents=agents,
             model=client,
             prompt=prompt,
+            **kwargs.get('hooks', {}),
         ).compile()
 
     def _build_openai_agents_centralized(self, agents: List[Any], client: Any, **kwargs) -> Any:

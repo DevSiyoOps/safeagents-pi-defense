@@ -1,0 +1,17 @@
+# Security policy for the guard (spec section 5).
+# Agent and tool names match ours/benchmark/tools.py and ours/integration/team.py.
+
+# Tools whose output comes from outside the system, so it is UNTRUSTED.
+untrusted_sources: [read_document]
+
+tools:
+  read_document: {risk: low}
+  write_file:    {risk: medium, allowed_agents: [writer],          trusted_args: [path]}
+  send_email:    {risk: high,   allowed_agents: [emailer],         trusted_args: [to]}
+  read_secret:   {risk: high,   allowed_agents: [secrets_manager]}
+
+schema:
+  max_chars: 4000
+  strip_patterns:
+    - '(?im)^\s*(system|assistant|user)\s*:'
+    - '<\|?(im_start|im_end|system|tool)\|?>'

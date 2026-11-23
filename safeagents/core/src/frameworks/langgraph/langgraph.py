@@ -44,8 +44,14 @@ class TeamLanggraph(Team):
     """Team implementation for the Langgraph framework."""
 
     def __init__(self, agents, architecture: Architecture | str,
-                 termination_condition=None, max_turns=None):
+                 termination_condition=None, max_turns=None, hook_factory=None):
+        # hook_factory(agent_name) -> {"pre_model_hook": ..., "post_model_hook": ...}
+        # Set before super().__init__, which builds the agents
+        self.hook_factory = hook_factory
         super().__init__(agents, Framework.LANGGRAPH, architecture, termination_condition, max_turns)
+
+    def _hooks_for(self, agent_name):
+        return self.hook_factory(agent_name) if self.hook_factory else {}
 
     def get_client(self):
         """Returns the langgraph client using ClientFactory."""
@@ -263,6 +269,7 @@ class TeamLanggraph(Team):
                         model=cur_agent_client,
                         tools=processed_tools + handoffs if handoffs else processed_tools,
                         prompt=agent.system_message,
+                        **self._hooks_for(agent.name),
                     )
             else:
                 raise ValueError("Each agent must be an instance of Agent")
@@ -280,7 +287,8 @@ class TeamLanggraph(Team):
             self.team = strategy.build_team(
                 agents=self.agents,
                 client=self.client,
-                prompt=LANGGRAPH_SUPERVISOR_PROMPT
+                prompt=LANGGRAPH_SUPERVISOR_PROMPT,
+                hooks=self._hooks_for("supervisor"),
             )
         elif self.architecture == Architecture.DECENTRALIZED:
             self.team = strategy.build_team(

@@ -69,12 +69,18 @@ class ClientFactory:
 
             # Gemini needs its thought signatures sent back with tool calls
             chat_class = GeminiChatOpenAI if "gemini" in llm_config["model"].lower() else ChatOpenAI
+            # Spaces out every LLM call made through this client (free-tier per-minute limits)
+            rate_limiter = None
+            if llm_config.get("requests_per_second"):
+                from langchain_core.rate_limiters import InMemoryRateLimiter
+                rate_limiter = InMemoryRateLimiter(requests_per_second=llm_config["requests_per_second"])
             return chat_class(
                 model=llm_config["model"],
                 api_key=llm_config["api_key"],
                 base_url=llm_config["base_url"],
                 temperature=llm_config["temperature"],
                 max_retries=llm_config["max_retries"],
+                rate_limiter=rate_limiter,
             )
 
         from langchain_openai.chat_models import AzureChatOpenAI
