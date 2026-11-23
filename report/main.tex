@@ -283,7 +283,11 @@ configuration.
 \paragraph{Model and runs.} All agents use \texttt{gemini-3.1-flash-lite} through Google's
 OpenAI-compatible endpoint, on the free tier (500 requests per day per key). We capped the
 request rate at one call every five seconds and allowed one retry, so quota is not spent on
-retries. Each run stops after 25 graph steps. Runs that fail with an API error (rate limit,
+retries. Each run stops after 25 graph steps. We made one change to SafeAgents' supervisor
+prompt, identical in every configuration: in our first real runs the model wrote its plan and
+addressed workers in plain text (``@reader, please read the file'') instead of calling the
+handoff tools, so no worker ever ran. We appended one sentence telling the supervisor to
+assign steps by calling the \texttt{transfer\_to\_*} tools. Runs that fail with an API error (rate limit,
 server overload, timeout) are not results and are re-run. We ran 1 trial per case on dev and
 3 trials per case on test. The guard was frozen before the first test run
 \pending{freeze date}.

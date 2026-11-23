@@ -55,7 +55,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-async def run_one(case, arm, trial, out_dir=RESULTS_DIR, client=None, classifier=None) -> dict:
+async def run_one(case, arm, trial, out_dir=RESULTS_DIR, client=None, classifier=None,
+                  timeout_s: float = 300) -> dict:
     """Run one case in one arm and write its trace. client/classifier are for offline tests."""
     config = ARMS[arm]["guard"]
     if config.classifier and classifier is None:
@@ -79,12 +80,17 @@ async def run_one(case, arm, trial, out_dir=RESULTS_DIR, client=None, classifier
     outcome = {"final_answer": None, "stop_reason": None, "error": None}
     start = time.monotonic()
     try:
-        state = await team.team.ainvoke({"messages": [{"role": "user", "content": case["task"]}]},
-                                        config={"recursion_limit": RECURSION_LIMIT})
+        state = await asyncio.wait_for(
+            team.team.ainvoke({"messages": [{"role": "user", "content": case["task"]}]},
+                              config={"recursion_limit": RECURSION_LIMIT}),
+            timeout=timeout_s)
         outcome["final_answer"] = text_of(state["messages"][-1])
         outcome["stop_reason"] = "completed"
     except GraphRecursionError:
         outcome["stop_reason"] = "recursion_limit"
+    except asyncio.TimeoutError:   # a hung API call: not a result, re-run later
+        outcome["stop_reason"] = "timeout"
+        outcome["error"] = f"timeout after {timeout_s:.0f}s"
     except APIError as exc:
         outcome["stop_reason"] = "api_error"
         outcome["error"] = f"{type(exc).__name__}: {exc}"[:2000]
@@ -121,7 +127,7 @@ async def main(args):
 
     errors = 0
     for case, arm, trial in todo:
-        trace = await run_one(case, arm, trial, out_dir=args.out)
+        trace = await run_one(case, arm, trial, out_dir=args.out, timeout_s=args.run_timeout)
         out = trace["outcome"]
         ran = [c["tool"] for c in trace["executed"]]
         blocked = [e["tool"] for e in trace["events"] if e["type"] == "tool_call" and e["decision"] == "BLOCK"]
@@ -146,5 +152,6 @@ if __name__ == "__main__":
     parser.add_argument("--out", default=str(RESULTS_DIR))
     parser.add_argument("--max-runs", type=int, default=None, help="stop after this many runs")
     parser.add_argument("--overwrite", action="store_true", help="re-run runs that already have a trace")
+    parser.add_argument("--run-timeout", type=float, default=300, help="seconds before one run counts as hung")
     parser.add_argument("--stop-on-quota", action="store_true", default=True)
     asyncio.run(main(parser.parse_args()))

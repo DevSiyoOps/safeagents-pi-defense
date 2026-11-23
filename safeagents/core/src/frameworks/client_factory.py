@@ -81,6 +81,7 @@ class ClientFactory:
                 temperature=llm_config["temperature"],
                 max_retries=llm_config["max_retries"],
                 rate_limiter=rate_limiter,
+                timeout=llm_config.get("timeout"),
             )
 
         from langchain_openai.chat_models import AzureChatOpenAI

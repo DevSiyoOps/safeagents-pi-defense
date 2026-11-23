@@ -158,6 +158,8 @@ class Team(ABC):
                 "max_retries": int(os.getenv("LLM_MAX_RETRIES") or "6"),
                 # 0 means no limit
                 "requests_per_second": float(os.getenv("LLM_REQUESTS_PER_SECOND") or "0"),
+                # seconds before one API call is abandoned (and retried, if retries are left)
+                "timeout": float(os.getenv("LLM_TIMEOUT_S") or "90"),
             }
 
         from ..clients.azure_openai import get_azure_config
