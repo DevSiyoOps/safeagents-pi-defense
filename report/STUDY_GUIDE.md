@@ -55,6 +55,10 @@ our numbers with the paper's.
   dangerous to call). With all tools on all workers, the same attack worked 4 of 4 times.
   Real systems are often over-privileged, and without this there is nothing to defend.
 - Model: `gemini-3.1-flash-lite`, free tier (500 requests/day per key). A run stops after 25 steps.
+- **One change to SafeAgents' supervisor prompt:** in our first real runs the supervisor wrote
+  its plan and "@reader, please read the file" as plain text instead of calling the handoff
+  tool, so nothing ran. We added one sentence telling it to use the `transfer_to_*` tools. It's
+  the same in every configuration, so A vs B vs C stays a fair comparison.
 
 ## 5. How the layer works
 

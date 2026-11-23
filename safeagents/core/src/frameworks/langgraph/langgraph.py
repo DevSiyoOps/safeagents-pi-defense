@@ -44,10 +44,12 @@ class TeamLanggraph(Team):
     """Team implementation for the Langgraph framework."""
 
     def __init__(self, agents, architecture: Architecture | str,
-                 termination_condition=None, max_turns=None, hook_factory=None):
+                 termination_condition=None, max_turns=None, hook_factory=None,
+                 supervisor_prompt=None):
         # hook_factory(agent_name) -> {"pre_model_hook": ..., "post_model_hook": ...}
         # Set before super().__init__, which builds the agents
         self.hook_factory = hook_factory
+        self.supervisor_prompt = supervisor_prompt   # None keeps SafeAgents' default
         super().__init__(agents, Framework.LANGGRAPH, architecture, termination_condition, max_turns)
 
     def _hooks_for(self, agent_name):
@@ -287,7 +289,7 @@ class TeamLanggraph(Team):
             self.team = strategy.build_team(
                 agents=self.agents,
                 client=self.client,
-                prompt=LANGGRAPH_SUPERVISOR_PROMPT,
+                prompt=self.supervisor_prompt or LANGGRAPH_SUPERVISOR_PROMPT,
                 hooks=self._hooks_for("supervisor"),
             )
         elif self.architecture == Architecture.DECENTRALIZED:
