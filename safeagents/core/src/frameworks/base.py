@@ -156,6 +156,8 @@ class Team(ABC):
                 "base_url": base_url,
                 "temperature": float(os.getenv("LLM_TEMPERATURE") or "0"),
                 "max_retries": int(os.getenv("LLM_MAX_RETRIES") or "6"),
+                # 0 means no limit
+                "requests_per_second": float(os.getenv("LLM_REQUESTS_PER_SECOND") or "0"),
             }
 
         from ..clients.azure_openai import get_azure_config
