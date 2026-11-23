@@ -111,7 +111,9 @@ async def main(args):
     cases = load_cases(split=args.split)
     if args.ids:
         cases = [c for c in cases if c["case_id"] in args.ids]
-    jobs = [(c, arm, t) for arm in args.arms for c in cases for t in range(1, args.trials + 1)]
+    # Trial 1 of every case and arm first, then trial 2, ...: if the daily quota runs out,
+    # what finished is still balanced across cases and arms.
+    jobs = [(c, arm, t) for t in range(1, args.trials + 1) for c in cases for arm in args.arms]
     todo = [j for j in jobs if args.overwrite or not _already_done(trace_path(args.out, j[1], j[0]["case_id"], j[2]))]
     if args.max_runs:
         todo = todo[:args.max_runs]
