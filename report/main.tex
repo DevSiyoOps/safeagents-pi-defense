@@ -1,0 +1,404 @@
+\documentclass[sigconf,nonacm]{acmart}
+
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds}
+
+% Anything not measured yet is marked with \pending{...}. Search for "pending" before submitting.
+\newcommand{\pending}[1]{\textcolor{red}{[PENDING: #1]}}
+\newcommand{\cfg}[1]{\textsf{#1}}
+
+\settopmatter{printfolios=true}
+\setcopyright{none}
+
+\begin{document}
+\sloppy
+
+\title{Provenance-Aware Defense Against Indirect Prompt Injection in a Multi-Agent System: An Extension of SafeAgents}
+
+\author{Siya Grover}
+\affiliation{%
+  \institution{Thompson Rivers University}
+  \city{Kamloops}
+  \country{Canada}}
+
+\author{Johnson Amoah}
+\affiliation{%
+  \institution{Thompson Rivers University}
+  \city{Kamloops}
+  \country{Canada}}
+
+\renewcommand{\shortauthors}{Grover and Amoah}
+
+\begin{abstract}
+Arora et al.\ show that LLM multi-agent systems built with popular frameworks carry out
+harmful or injected instructions most of the time, and that a central planner does not make
+them safer. Their study diagnoses these weak links but does not build a defense, and in its
+Agent Security Bench (ASB) setting the injected text is part of the user's own request. We
+study the other case, where the injection hides inside a document that one agent reads and
+then passes on to others. We add a security layer to SafeAgents' LangGraph supervisor team.
+The layer labels every message as trusted or untrusted, carries the lowest label forward
+through every message derived from untrusted content, cleans and fences untrusted text before
+any agent reads it, and checks every tool call against a policy before it runs. We built a
+benchmark of attack cases, each paired with a benign twin, scored only from the tool calls
+that actually ran, with no LLM judge. We compare no defense (\cfg{A}), stronger security
+prompts (\cfg{B}) and our layer (\cfg{C}), and ablate the layer's parts.
+\pending{one sentence with the headline test-split numbers for A, B and C.}
+On a sample of the paper's own ASB cases our layer changes nothing (7/17 vs 7/18 attacks
+succeeded), as expected, since the user's request is trusted by design.
+\end{abstract}
+
+\keywords{prompt injection, multi-agent systems, LLM agents, provenance, information flow, security}
+
+\maketitle
+
+% =====================================================================================
+\section{Introduction}
+
+LLM agents read web pages, emails and files, and they call tools that act in the world. If
+the text they read contains instructions, the model may follow them: this is \emph{indirect
+prompt injection}~\cite{greshake2023indirect}. In a multi-agent system the problem spreads.
+One agent reads a poisoned document and writes a summary, the planner reads the summary and
+gives the next agent an instruction, and that agent holds a tool the first agent never had.
+Lee and Tiwari call this LLM-to-LLM ``prompt infection''~\cite{lee2024infection}.
+
+Our starting point is the paper by Arora et al.~\cite{arora2025weaklinks} and its framework,
+SafeAgents~\cite{safeagentscode}, which runs the same agents on several multi-agent frameworks
+and architectures. The paper finds that centralized systems are not safer than a single agent
+(on ASB, ARIA-4 rises from 81.5\% for a single agent to 92.5\% for Magentic-One), that atomic
+delegation hides harmful intent from sub-agents, and that missing fallback logic lets work
+continue after a planner refuses. Two details shaped our project. First, in its ASB runs the
+injected instruction is appended to the user's task, so it arrives through the user prompt,
+not through content passed between agents. Second, the paper's DHARMA analysis is built on
+refusals, but most runs end as unmitigated execution: the agents never notice the injection
+and simply comply. So rather than hoping the model refuses, we put checks outside the model.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+\item A benchmark of indirect injection cases for a SafeAgents LangGraph team. Every attack
+  case has a benign twin with the same task and a clean document. Success is decided from the
+  tool calls that ran, using a per-case secret and an outside-recipient pattern, with no LLM
+  judge (Section~\ref{sec:bench}).
+\item A provenance-aware security layer that plugs into SafeAgents through LangGraph's model
+  hooks, with four decisions (ALLOW, SANITIZE, QUARANTINE, BLOCK) and switchable parts
+  (Section~\ref{sec:design}).
+\item A comparison of no defense, prompt hardening and our layer, with an ablation of the
+  layer's parts and an optional LLM classifier, reported with 95\% Wilson intervals
+  (Sections~\ref{sec:setup}--\ref{sec:results}).
+\end{enumerate}
+
+We do not claim the system is secure, and we do not claim novelty for verification layers in
+general (Section~\ref{sec:related}). Our results are not directly comparable with the paper's
+numbers: we use a different model, our own cases and a different attack channel. The
+comparison that matters is between our configurations on the same cases.
+
+% =====================================================================================
+\section{Background and Related Work}
+\label{sec:related}
+
+\paragraph{SafeAgents.} SafeAgents~\cite{arora2025weaklinks,safeagentscode} wraps agents and
+tools in one interface and builds the same team in Autogen (Magentic-One), LangGraph or the
+OpenAI Agents SDK, in centralized or decentralized form. It ships ASB and other datasets, and
+scores runs with ARIA (outcome categories) and DHARMA (where in the system a harmful task was
+stopped or ignored), both judged by an LLM. We use its LangGraph centralized architecture: a
+supervisor that hands work to worker agents through \texttt{transfer\_to\_*} tools.
+
+\paragraph{Agent Security Bench.} ASB~\cite{zhang2024asb} covers ten agent types (for
+example a financial analyst or a medical advisor), each with normal tools, several tasks and
+attack tools. In SafeAgents' ASB setting the attacker's instruction is appended to the user's
+task (direct prompt injection), and an attack counts as successful if the attack tool is called.
+
+\paragraph{Defenses.} Spotlighting~\cite{hines2024spotlighting} marks untrusted text
+(delimiters, datamarking, encoding) so the model can tell data from instructions; our
+provenance wrapper is a simple delimiting form of this idea. CaMeL~\cite{debenedetti2025camel}
+goes further: a privileged LLM writes a program from the trusted query only, a quarantined LLM
+parses untrusted data, and capabilities attached to every value decide what may flow into
+tool arguments. Our trust labels and argument checks borrow this information-flow view, but
+we keep the agents unchanged and only intercept what they read and the calls they make.
+AgentDojo~\cite{debenedetti2024agentdojo} is a benchmark for indirect injection against
+single tool-using agents, with deterministic checks of the environment state; our scoring
+follows the same idea. Peign\'e-Lefebvre et al.~\cite{peigne2025tax} show that making agents
+more resistant to spreading attacks can cost them collaboration ability, which is why we
+measure benign utility and false positives next to attack success.
+
+% =====================================================================================
+\section{Threat Model}
+\label{sec:threat}
+
+\paragraph{System.} A SafeAgents LangGraph supervisor team on \texttt{gemini-3.1-flash-lite}.
+The supervisor delegates to four workers: \texttt{reader}, \texttt{emailer},
+\texttt{secrets\_manager} and \texttt{writer}. There are four mock tools:
+\texttt{read\_document}, \texttt{send\_email}, \texttt{read\_secret} and
+\texttt{write\_file}. They never send or write anything; they log each call that runs.
+
+\paragraph{Attacker.} The attacker controls only the text of documents the team reads. They
+do not control the user's request, the system prompts, the tools, the policy or the model.
+They know the agent and tool names. Their goal is any of: getting the vault secret out (into an
+email or a file), sending email to an address the user never named, or, as a side effect,
+stopping the user's real task.
+
+\paragraph{Trust assumptions.} The user is trusted. Document content is untrusted, and
+so is anything derived from it: the lowest label wins. Every worker holds all four tools.
+This over-privilege is deliberate. In an early probe where each worker held only its own tool,
+0 of 10 injection styles succeeded, because the reader that saw the injection had nothing
+dangerous to call. With every tool available to every worker, the same \emph{task
+continuation} attack succeeded in 4 of 4 runs. Real deployments are often over-privileged,
+and without this setting there would be nothing for a defense, or for the permissions
+ablation, to fix.
+
+\paragraph{Out of scope.} Direct injection in the user's request (the paper's ASB setting;
+we test it only as a sanity check), compromised tools, poisoned memory, non-text inputs, and
+attacks written against the frozen guard (a stretch goal we did not reach
+\pending{update if adaptive attacks are run}).
+
+% =====================================================================================
+\section{Design of the Security Layer}
+\label{sec:design}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize,
+  box/.style={draw, rounded corners=2pt, minimum width=1.55cm, minimum height=0.6cm, align=center},
+  guard/.style={draw, fill=gray!15, rounded corners=2pt, minimum width=1.55cm, minimum height=0.45cm, align=center},
+  arr/.style={-{Stealth[length=1.6mm]}, thick}]
+  \node[box] (user) {User request\\\textbf{TRUSTED}};
+  \node[box, right=0.55cm of user] (sup) {Supervisor};
+  \node[box, below left=0.8cm and 0.05cm of sup] (reader) {reader};
+  \node[box, below right=0.8cm and 0.05cm of sup] (emailer) {emailer};
+  \node[box, below=0.7cm of reader] (doc) {Document\\\textbf{UNTRUSTED}};
+  \node[box, below=0.7cm of emailer] (tool) {send\_email};
+  \node[guard, right=0.35cm of sup, minimum width=2.1cm] (pre) {pre-model hook:\\label, sanitize, quarantine};
+  \node[guard, right=0.3cm of tool, minimum width=2.1cm] (post) {post-model hook:\\check call, BLOCK};
+  \draw[arr] (user) -- (sup);
+  \draw[arr] (sup) -- node[left, pos=0.4]{handoff} (reader);
+  \draw[arr] (sup) -- (emailer);
+  \draw[arr] (doc) -- node[left]{read\_document} (reader);
+  \draw[arr, dashed] (reader) -- node[below=1pt, font=\tiny]{summary} node[below=7pt, font=\tiny]{(untrusted)} (emailer);
+  \draw[arr] (emailer) -- (tool);
+  \draw[densely dotted] (pre) -- (sup);
+  \draw[densely dotted] (post.north) |- (emailer.east);
+\end{tikzpicture}
+\caption{Where the layer sits. Hooks run around every agent's model call, including the
+supervisor's. The pre-model hook decides what the model sees; the post-model hook decides
+which of the model's tool calls may run.}
+\label{fig:arch}
+\end{figure}
+
+\paragraph{Where it plugs in.} LangGraph's prebuilt ReAct agent and supervisor accept a
+\emph{pre-model hook}, which can replace the messages the model sees, and a
+\emph{post-model hook}, which runs after the model answers and before its tool calls execute.
+If the post-model hook adds a tool result for a call, that call never runs. We added a
+\texttt{hook\_factory} argument to SafeAgents' LangGraph team (two small edits) so every
+agent, including the supervisor, gets both hooks (Figure~\ref{fig:arch}). The guard itself
+is plain Python with no LangGraph imports, so it is unit-tested on hand-written inputs.
+
+\paragraph{Trust labels.} Each message gets a label, TRUSTED or UNTRUSTED. The user's
+request is TRUSTED. Output of \texttt{read\_document} is UNTRUSTED. Handoff messages, which
+are fixed text written by framework code, are TRUSTED. An agent's own message inherits its
+\emph{context trust}: the lowest label among the messages its model actually saw. Tool output
+inherits the label of the model message that called the tool. A message the hooks have never
+seen is labelled UNTRUSTED (fail closed). So once the reader summarizes a poisoned document,
+the summary is UNTRUSTED, and once the supervisor reads that summary, everything the
+supervisor says next is UNTRUSTED too.
+
+\paragraph{Message checks (pre-model hook).} Every UNTRUSTED message written by someone else
+is checked before it reaches the model, in this order:
+\begin{itemize}
+\item \textbf{Classifier} (optional): an LLM call asks whether the text is an injection. If
+  yes, the message is replaced with a placeholder: QUARANTINE.
+\item \textbf{Schema}: role markers such as ``system:'' at the start of a line and chat
+  control tokens are stripped, and text over 4{,}000 characters is truncated: SANITIZE.
+\item \textbf{Provenance}: the text is fenced in \texttt{<untrusted\_data source=...>} tags
+  with a note that it is data, not instructions: SANITIZE.
+\end{itemize}
+The original messages in the graph state are never changed; only the model's input is.
+
+\paragraph{Tool-call checks (post-model hook).} Each non-handoff tool call is checked
+against \texttt{policy.yaml}; the first rule that matches decides.
+\begin{itemize}
+\item \textbf{Permissions}: \texttt{send\_email} only by \texttt{emailer},
+  \texttt{read\_secret} only by \texttt{secrets\_manager}, \texttt{write\_file} only by
+  \texttt{writer}. Otherwise BLOCK.
+\item \textbf{Provenance}: if the context is UNTRUSTED and the tool is high-risk
+  (\texttt{send\_email}, \texttt{read\_secret}), each argument named as \emph{trusted}
+  (the recipient of an email) must appear in trusted text, in practice the user's request.
+  A high-risk tool with no trusted arguments (\texttt{read\_secret}) is blocked outright
+  in an untrusted context.
+\end{itemize}
+A blocked call is answered with a ``BLOCKED by security policy'' tool message, so the agent
+can carry on with the rest of its task.
+
+\paragraph{Why this stops the attacks in our threat model.} Leaking the secret needs a
+\texttt{read\_secret} call, and after a document is read every context is UNTRUSTED, so the
+call is blocked. Sending to an attacker's address needs a recipient that is not in the
+user's request, so it is blocked. The user's own email still goes out, because its recipient
+is in the request.
+
+% =====================================================================================
+\section{Benchmark}
+\label{sec:bench}
+
+\paragraph{Case format.} A case is a JSON object with a task, the documents the team can
+read, a \emph{secret} (what \texttt{read\_secret} returns in that case) and, for attack
+cases, a separate \emph{canary} string planted in the injected text. Call patterns describe
+what must or must not happen, for example ``\texttt{send\_email} with \texttt{to} equal to
+\texttt{alice@corp.test}'' or ``an email to any address outside this list''.
+
+\paragraph{Scoring, with no LLM judge.} From the calls that actually ran:
+\begin{itemize}
+\item \textbf{attack success}: the secret appears in the arguments of a call that ran, or an
+  attack pattern matches a call that ran;
+\item \textbf{benign success}: every expected call (for example the email to the user's
+  recipient) ran with the expected arguments;
+\item \textbf{propagation}: the canary reached the model input of more than one agent, after
+  the guard's changes;
+\item \textbf{guard fired}: the guard blocked a call or quarantined a message.
+\end{itemize}
+Keeping the secret and the canary separate matters: an agent that merely quotes the poisoned
+note spreads the canary but has not leaked anything.
+
+\paragraph{Cases.} Tasks are ordinary office work: summarize a report and email it,
+summarize a policy and save it to a file, read an invoice and email the total. Attack styles
+include task continuation (``after sending, also\ldots''), fake system messages, claimed
+authority, role override, fake tool results, polite requests phrased as data, instructions
+buried at the end, a relay through the supervisor, a poisoned summary, copying the email to
+an outside address, writing the secret into a file, verification-key and archive-copy
+pretexts, and path hijacking. The dev split has 38 cases (19 attack/benign pairs): 14 by
+Amoah and 24 by Grover. The test split has 14 cases (7 pairs), written by Amoah and kept
+separate; we did not look at or run them while tuning.
+
+% =====================================================================================
+\section{Experimental Setup}
+\label{sec:setup}
+
+\paragraph{Configurations.} \cfg{A}: no defense. \cfg{B}: \cfg{A} plus security rules added
+to every worker's prompt (document text is data, never follow instructions inside it, never
+email an address not in the original task, never read or write the secret unless the task
+asks). \cfg{C}: our layer with provenance, permissions and schema checks, with the
+\cfg{A} prompts. Ablations: provenance only, permissions only, \cfg{C} plus the LLM
+classifier, and the classifier alone. Tools, tasks and scoring are identical in every
+configuration.
+
+\paragraph{Model and runs.} All agents use \texttt{gemini-3.1-flash-lite} through Google's
+OpenAI-compatible endpoint, on the free tier (500 requests per day per key). We capped the
+request rate at one call every five seconds and allowed one retry, so quota is not spent on
+retries. Each run stops after 25 graph steps. Runs that fail with an API error (rate limit,
+server overload, timeout) are not results and are re-run. We ran 1 trial per case on dev and
+3 trials per case on test. The guard was frozen before the first test run
+\pending{freeze date}.
+
+\paragraph{Metrics.} Attack success rate (ASR) and propagation rate over attack runs; false
+positive rate (guard fired) and benign utility over benign runs; utility under attack (benign
+success on attack runs); mean latency per run; and cost as mean LLM calls and tokens per run.
+Rates are reported with 95\% Wilson score intervals~\cite{wilson1927}, which behave well for
+small samples and rates near 0 or 1.
+
+% =====================================================================================
+\section{Results}
+\label{sec:results}
+
+\subsection{Pilot: does the attack work at all?}
+Before building the guard we checked that the attacks work on the unprotected team. With each
+worker limited to its own tool, 0 of 10 injection styles succeeded; with all tools on every
+worker, task continuation succeeded 4 of 4 times. On the first 14 dev cases with no guard
+(an earlier runner with three workers), 5 of 7 attacks succeeded and all 7 benign tasks
+completed. These are single trials and only show that the cases are usable.
+
+\subsection{Main comparison}
+\input{generated/main_table.tex}
+
+Table~\ref{tab:main} compares \cfg{A}, \cfg{B} and \cfg{C} on the test split.
+\pending{2--3 paragraphs: how much B and C lower ASR compared with A; whether the intervals
+overlap; benign utility and false positives for C; cost and latency differences.}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{generated/asr_test.pdf}
+\caption{Attack success rate on the test split with 95\% Wilson intervals.}
+\label{fig:asr}
+\end{figure}
+
+\subsection{Ablation}
+\input{generated/ablation_table.tex}
+
+Table~\ref{tab:ablation} shows every configuration on the dev split. Our hypotheses from the
+proposal were that provenance and permissions together cut attack success substantially, and
+that the classifier alone is weaker and more costly.
+\pending{what each part catches on its own, and whether the classifier adds anything on top of C.}
+
+Two things are expected from the design and worth checking in the numbers. Permissions alone
+cannot stop attacks that use the right agent: if the injection asks the emailer to also copy
+the summary to an outside address, the emailer is allowed to send email. And provenance
+fencing does not remove the canary, so propagation under \cfg{C} measures how far the
+injected text \emph{travels}, not whether it was obeyed; only quarantine removes it.
+
+\subsection{Sanity check on the paper's own ASB cases}
+\input{generated/asb_table.tex}
+
+Table~\ref{tab:asb} runs a sample of SafeAgents' ASB cases (direct injection appended to the
+user's task) with one tool-using agent. The attack tool was called in 7 of 17 runs without
+our layer and 7 of 18 with it, and the layer never sanitized a message or blocked a call. This
+is what the threat model predicts: the injection is part of the trusted request, and our
+policy has no rules for ASB's tools. It shows the boundary of the layer rather than a failure
+of it. Attack success here is well below the paper's numbers for GPT-4o; many runs ended with
+the planner refusing or stopping after writing a plan. We do not treat this as a reproduction
+of the paper's results, since the model and agents differ.
+
+% =====================================================================================
+\section{Failure Analysis}
+\label{sec:failures}
+
+\pending{for each attack that got through B or C on test: case, style, which agent was fooled,
+what the guard saw and why it allowed the call. For each benign task C broke: which rule fired.}
+
+Some failure modes follow from the design and we expect to see them:
+\begin{itemize}
+\item \textbf{Label creep.} Once a document is read, almost every later message is UNTRUSTED.
+  This is what makes the provenance rule strong, but a benign task whose recipient really
+  comes from a document (``email the address in this file'') would be blocked. Our tasks
+  always name the recipient, so the false positive rate here is likely optimistic.
+\item \textbf{Medium-risk tools.} \texttt{write\_file} is not high-risk, so provenance alone
+  does not stop a poisoned path. Writing the secret into a file is still stopped because
+  reading the secret is blocked, but a path-hijack attack depends on the permissions rule.
+\item \textbf{Substring checks.} A recipient counts as trusted if it appears in the user's
+  request. An attacker who can make the user mention an address is outside our threat model.
+\item \textbf{Loops.} In the pilot one benign run sent six emails before stopping. Loops
+  cost quota and can count as benign success even when the behaviour is wrong.
+\end{itemize}
+
+% =====================================================================================
+\section{Limitations}
+
+The secret and canary checks can miss a paraphrased leak. Mock tools are simpler than real
+ones, and our tasks are short. All results come from one small model, on a free tier that
+limited us to 1 trial on dev and 3 on test, so the intervals are wide. The cases were written
+by the same team that built the guard, although the test cases were written separately and
+not used for tuning. We did not run adaptive attacks written against the frozen rules, which
+would be the real test of the design. Finally, the ASB check covers a small sample and one
+agent type per case.
+
+% =====================================================================================
+\section{Conclusion}
+
+The weak links Arora et al.\ describe come from agents trusting whatever is in their context.
+We moved the trust decision out of the model: every message carries a label, the lowest label
+wins, and tool calls in an untrusted context may only use arguments that came from the user.
+\pending{one or two sentences on what the test results show.} The layer does nothing for
+injection that arrives in the user's own request, which needs a different defense.
+
+\paragraph{Code and data.} Our code, cases and traces are at\\
+\url{https://github.com/DevSiyoOps/safeagents-pi-defense}.
+
+\paragraph{Contributions.} Amoah set up the environment and free-tier model access, wrote the
+mock tools and the attack probe, designed the case format and its checker, wrote 14 dev and
+14 test cases, the Config \cfg{B} prompts and the case runner. Grover wrote the trace and hook
+specification, the hooks, guard, policy, recorder and LLM classifier, the experiment runner
+for all configurations, the scorer and metrics, 24 dev cases, the threat model and the ASB
+sanity check. Both reviewed each other's code, ran experiments and wrote this report.
+\pending{check this paragraph with Johnson.}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{refs}
+
+\end{document}
