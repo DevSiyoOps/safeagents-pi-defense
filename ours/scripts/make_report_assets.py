@@ -119,8 +119,8 @@ def asr_figure(summary, arms, name, title):
         ax.set_axis_off()
     else:
         rates = [summary[a]["asr"]["rate"] for a in shown]
-        lo = [r - summary[a]["asr"]["ci_low"] for a, r in zip(shown, rates)]
-        hi = [summary[a]["asr"]["ci_high"] - r for a, r in zip(shown, rates)]
+        lo = [max(0.0, r - summary[a]["asr"]["ci_low"]) for a, r in zip(shown, rates)]
+        hi = [max(0.0, summary[a]["asr"]["ci_high"] - r) for a, r in zip(shown, rates)]
         ax.bar(range(len(shown)), rates, color="#4C6A92", width=0.6)
         ax.errorbar(range(len(shown)), rates, yerr=[lo, hi], fmt="none", ecolor="#222222", capsize=3, lw=1)
         ax.set_xticks(range(len(shown)))

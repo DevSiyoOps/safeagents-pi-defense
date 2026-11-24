@@ -282,8 +282,8 @@ configuration.
 
 \paragraph{Model and runs.} All agents use \texttt{gemini-3.1-flash-lite} through Google's
 OpenAI-compatible endpoint, on the free tier (500 requests per day per key). We capped the
-request rate at one call every five seconds and allowed one retry, so quota is not spent on
-retries. Each run stops after 25 graph steps. We made one change to SafeAgents' supervisor
+request rate at one call every five seconds and allowed at most two retries per call, so
+little quota is spent on retries. Each run stops after 25 graph steps. We made one change to SafeAgents' supervisor
 prompt, identical in every configuration: in our first real runs the model wrote its plan and
 addressed workers in plain text (``@reader, please read the file'') instead of calling the
 handoff tools, so no worker ever ran. We appended one sentence telling the supervisor to
@@ -312,9 +312,20 @@ completed. These are single trials and only show that the cases are usable.
 \subsection{Main comparison}
 \input{generated/main_table.tex}
 
-Table~\ref{tab:main} compares \cfg{A}, \cfg{B} and \cfg{C} on the test split.
-\pending{2--3 paragraphs: how much B and C lower ASR compared with A; whether the intervals
-overlap; benign utility and false positives for C; cost and latency differences.}
+Table~\ref{tab:main} compares \cfg{A}, \cfg{B} and \cfg{C} on the test split. The \cfg{A}
+and \cfg{B} numbers are partial: 43 of their 84 planned runs have completed so far, the rest
+failed with server-overload errors or hit the daily quota and are being re-run, and \cfg{A}
+has no completed run yet on one of the seven attack cases. \pending{update once all test runs
+are in.}
+
+Without a defense, 9 of 13 attack runs succeeded (69\%, 95\% CI 42--87\%). With the security
+prompts of \cfg{B}, none of 11 did (0\%, CI 0--26\%). The intervals do not overlap. Neither
+configuration lost benign utility (10 of 10 and 9 of 9 benign runs completed), and \cfg{B}
+used no more LLM calls than \cfg{A} (6.9 against 7.5 per run). In the \cfg{A} runs, every one of
+the nine tool calls that served the attacker (six \texttt{read\_secret} calls and three emails
+to an address not in the task) was made by a worker that does not own that tool, which is
+the pattern the permissions rule targets. \pending{C on test: ASR, intervals against A and B,
+false positives, utility and cost.}
 
 \begin{figure}[t]
 \centering
@@ -354,7 +365,45 @@ of the paper's results, since the model and agents differ.
 \label{sec:failures}
 
 \pending{for each attack that got through B or C on test: case, style, which agent was fooled,
-what the guard saw and why it allowed the call. For each benign task C broke: which rule fired.}
+what the guard saw and why it allowed the call.}
+
+\paragraph{What the guard blocked on dev.} We read every trace from the 27 completed \cfg{C}
+runs on dev so far (13 attack, 14 benign; two more failed with API errors). No attack
+succeeded. The guard blocked 91 tool calls, and every block came from the permissions rule.
+The permissions check runs before the provenance check, so for a call both rules would stop,
+permissions is the one recorded. Only 5 of the 91 blocks stopped an attacker's goal, all of
+them a worker other than \texttt{secrets\_manager} calling \texttt{read\_secret}. The other 86
+were steps of the user's own task taken by the wrong worker: the \texttt{reader} or
+\texttt{writer} emailing the summary to the user's recipient (79), or the \texttt{reader}
+writing the file (7). No worker tried to email an address outside the task in these runs.
+
+\paragraph{Why the false positive rate is 100\% on dev.} Every benign run had at least one such
+block (42 blocks over 14 runs), so by our definition the guard fired in 14 of 14 benign runs.
+Yet all 14 benign tasks finished, because after the block the supervisor gave the step to the
+worker that owns the tool. The false positive rate as we defined it (the guard acted) overstates
+the harm here; we keep the definition and report benign utility next to it. The cause is the
+setup, not the rule: every worker holds every tool, and this model often does the whole task
+in the first worker it reaches. Without the guard the same habit is visible: in the \cfg{A}
+test runs, 22 of the 25 emails that served the user's task were sent by a worker other than
+the \texttt{emailer}.
+
+\paragraph{Cost of blocking.} \cfg{C} averaged 13.6 LLM calls per run on dev. Our only
+\cfg{A} dev runs are two check runs (5.5 calls per run); on test, \cfg{A} averaged 7.5. Part of the extra
+cost is retries: 42 of the 91 blocks were the same worker calling the same blocked tool again,
+although the block message says not to retry. In 2 of the 13 attack runs this turned into a
+loop that hit the 25-step limit after 7 and 8 blocks, so the user's task did not finish. These
+two runs are the gap in utility under attack (11 of 13).
+
+\paragraph{Handoff errors.} In 23 of the 27 \cfg{C} runs, a worker called
+\texttt{transfer\_back\_to\_supervisor} as an ordinary tool and got ``not a valid tool'' back
+from the framework, which adds that handoff itself. This happened in 4 of 25 \cfg{A} and 7 of
+22 \cfg{B} test runs. We have not established why it is more frequent under \cfg{C}.
+
+\paragraph{What these runs do not show.} Because permissions fires first, the dev runs of
+\cfg{C} do not show what provenance contributes on its own; the provenance-only ablation
+does. And \cfg{C} saw fewer attacker-goal calls on dev (5 in 13 attack runs) than \cfg{A} on
+test (9 in 13), but the splits differ, so we do not read this as the fence making the model
+less obedient to the injection.
 
 Some failure modes follow from the design and we expect to see them:
 \begin{itemize}

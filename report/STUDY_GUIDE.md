@@ -155,8 +155,37 @@ with few trials we say "between X and Y", not one number.
 | ASB sample, A vs C | 7/17 vs 7/18, layer never acted | expected, see section 3 |
 | Offline tests (scripted fake model) | 59 tests pass | checks the plumbing, not real-model behaviour |
 
-Main and ablation results: **pending** until the Gemini runs finish. Re-run
+**Partial results so far (Nov 24):**
+
+| What | Result | Notes |
+|---|---|---|
+| A on test (no defense) | 9/13 attacks worked = 69% [42–87%] | Johnson's runs, 43 of 84 A+B runs done |
+| B on test (security prompts) | 0/11 = 0% [0–26%] | intervals don't overlap with A |
+| Benign utility, A and B on test | 10/10 and 9/9 | prompts didn't break normal work |
+| C on dev (our layer) | 0/13 attacks worked [0–23%] | 27 of 38 runs done |
+| C on dev, benign utility | 14/14 | every normal task finished |
+| C on dev, false positive rate | 14/14 = 100% | see section 10, it's over-eager workers |
+| C on dev, calls per run | 13.6 | A on test is 7.5 |
+
+C on test and the ablations are still **pending**. Re-run
 `python -m ours.scripts.make_report_assets` and the tables fill in.
+
+### What the traces show (C on dev)
+
+- **All 91 blocks came from the permissions rule.** Permissions is checked before provenance,
+  so when both would block, permissions gets the credit. So dev C doesn't tell us what
+  provenance adds alone; the "provenance only" ablation will.
+- **Only 5 of 91 blocks were the attacker's goal** (reader calling `read_secret`). The other 86
+  were the user's own task done by the wrong worker, e.g. the reader trying to email the summary
+  to the right person. The supervisor then handed it to the emailer and the task finished.
+- **That's why FPR is 100% but benign utility is also 100%.** The guard "fired" in every benign
+  run, but nothing the user wanted was lost. Same habit exists without the guard: in A, 22 of 25
+  task emails were sent by a worker that isn't the emailer.
+- **Retries cost calls.** 42 of 91 blocks were the same worker trying the same blocked tool again,
+  even though the message says "Do not retry". 2 attack runs looped until the 25-step limit,
+  so the task didn't finish there (utility under attack 11/13).
+- **In A, every attacker call came from the wrong worker** (6 `read_secret`, 3 emails to outside
+  addresses). That's exactly what the permissions rule blocks.
 
 ## 10. Weak spots to be honest about
 
@@ -185,12 +214,16 @@ Main and ablation results: **pending** until the Gemini runs finish. Re-run
    string and pattern matches on what actually ran, so they're repeatable.
 6. **Why is the secret separate from the canary?** Quoting the injected note isn't a leak. The
    canary measures spreading; the secret measures leaking.
-7. **Why would security prompts (B) not be enough?** They ask the model to behave; the model can
-   be talked out of it. Our checks run in code the model can't change. [Confirm with results.]
+7. **B got 0% on test, so why do we need C?** So far B stopped every attack too (0/11, partial).
+   The difference is the kind of guarantee: B asks the model to behave, and a different model or
+   a stronger attack could talk it out of it. C's checks run in code the model can't change. With
+   our small sample we can't say B and C differ in ASR; we can say C costs more calls.
+   [Update when C test results are in.]
 8. **Doesn't wrapping text in tags just ask the model nicely too?** Yes, the fence alone is a
    prompt-level defense. The hard guarantee comes from the tool-call checks.
-9. **What's the cost of the layer?** The rules add no LLM calls; the optional classifier adds
-   one per untrusted message. [Give calls/run from the results.]
+9. **What's the cost of the layer?** The rules themselves add no LLM calls; the optional
+   classifier adds one per untrusted message. But blocking makes agents retry and re-plan: C
+   used 13.6 calls/run on dev vs 7.5 for A on test (different splits, so rough).
 10. **What would break your layer?** An attack that only needs allowed actions with
     user-named arguments, a paraphrased leak, or a task that legitimately needs data from a
     document as an argument.
@@ -203,6 +236,10 @@ Main and ablation results: **pending** until the Gemini runs finish. Re-run
 14. **Who did what?** Johnson: setup, mock tools, probe, case format, 14 dev and 14 test cases,
     B prompts. Siya: spec, hooks, guard, policy, recorder, classifier, runner, scorer, 24 dev
     cases, threat model, ASB check.
+15. **Your FPR is 100%, isn't that terrible?** By our definition FPR means "the guard acted in a
+   benign run". It acted because workers tried tools that aren't theirs (we gave every worker
+   every tool). Every benign task still finished (14/14). We kept the definition and report
+   utility next to it rather than redefining the metric after seeing the results.
 
 ## 12. Where things are
 
