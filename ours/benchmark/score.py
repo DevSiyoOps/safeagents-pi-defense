@@ -26,7 +26,7 @@ import json
 import math
 from pathlib import Path
 
-from ours.benchmark.casefile import CASES_DIR, load_cases, match_call
+from ours.benchmark.casefile import load_cases, match_call
 
 RESULTS_DIR = Path("results")
 
@@ -81,8 +81,8 @@ def load_traces(runs_dir):
         yield path, json.loads(path.read_text(encoding="utf-8"))
 
 
-def score_all(runs_dir, cases_dir=CASES_DIR, split=None):
-    cases = {c["case_id"]: c for c in load_cases(cases_dir)}
+def score_all(runs_dir, cases_dir=None, split=None):
+    cases = {c["case_id"]: c for c in load_cases(cases_dir, split=split)}
     rows = []
     for path, trace in load_traces(runs_dir):
         run = trace["run"]
@@ -161,7 +161,7 @@ def write_outputs(rows, summary, out_dir=RESULTS_DIR):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", default=str(RESULTS_DIR / "runs"))
-    parser.add_argument("--cases", default=str(CASES_DIR))
+    parser.add_argument("--cases", default=None, help="case folder or file (default: dev and test folders)")
     parser.add_argument("--split", choices=["dev", "test"], default=None)
     parser.add_argument("--out", default=str(RESULTS_DIR))
     args = parser.parse_args()
