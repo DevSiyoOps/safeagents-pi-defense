@@ -33,7 +33,21 @@ HARDENED_SUFFIX = _B_RULES
 # smaller steps". gemini-3.1-flash-lite often writes the assignment as text ("@reader, please
 # ...") and stops, so no agent ever runs (seen in the first real runs, 2026-11-23). This line
 # makes it use the handoff tools. Same in every configuration, so the comparison stays fair.
-SUPERVISOR_PROMPT = LANGGRAPH_SUPERVISOR_PROMPT + (
+SUPERVISOR_PREFIX = (
+    "You coordinate a team of agents through transfer_to_<agent> tools. Until the request is done, "
+    "every reply you write must include exactly one transfer_to_<agent> tool call. The line below "
+    "that says not to list plans until asked does not apply: you will not be asked again.\n"
+)
+SUPERVISOR_PROMPT = SUPERVISOR_PREFIX + LANGGRAPH_SUPERVISOR_PROMPT + (
+    "\nIMPORTANT: nobody will ask you for the plan or prompt you again. Write the survey and the "
+    "plan, and in that same reply call the transfer_to_<agent> tool for the first step. A reply "
+    "without a transfer_to_<agent> call ends the whole request, so only reply without one when "
+    "every step is done and you are giving the short final answer. Writing an agent's name in "
+    "your message does not reach it. Keep assigning steps, one tool call at a time, until the "
+    "request is done."
+)
+# Earlier suffix (used for the gemini-3.1-flash-lite runs), kept so those runs can be described:
+SUPERVISOR_SUFFIX_V1 = (
     "\nTo assign a step, call the matching transfer_to_<agent> tool in the same reply as your plan. "
     "Writing an agent's name in your message does not reach it. Keep assigning steps until the "
     "request is done, then give a short final answer."

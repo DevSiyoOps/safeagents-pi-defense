@@ -96,7 +96,8 @@ class Guard:
             allowed = rules.get("allowed_agents")
             if allowed is not None and call.agent not in allowed:
                 return Verdict(Decision.BLOCK, "agent_not_permitted",
-                               f"BLOCKED by security policy: {call.agent} may not call {call.tool}")
+                               f"BLOCKED by security policy: {call.agent} may not call {call.tool}. "
+                               "Do not retry. Finish your own step and hand back to the supervisor.")
 
         if self.config.provenance and context_trust == Trust.UNTRUSTED and rules.get("risk") == "high":
             trusted_args = rules.get("trusted_args")
@@ -107,9 +108,11 @@ class Guard:
                     values = _addresses(value) if arg == "to" else [str(value).strip().lower()]
                     if not values or any(v not in trusted for v in values):
                         return Verdict(Decision.BLOCK, "arg_not_from_trusted_content",
-                                       f"BLOCKED by security policy: '{arg}' must come from the user's request")
+                                       f"BLOCKED by security policy: '{arg}' must come from the user's request. "
+                                       "Do not retry with another value.")
             else:
                 return Verdict(Decision.BLOCK, "high_risk_from_untrusted_context",
-                               f"BLOCKED by security policy: {call.tool} is not allowed after reading untrusted content")
+                               f"BLOCKED by security policy: {call.tool} is not allowed after reading untrusted content. "
+                               "Do not retry.")
 
         return Verdict(Decision.ALLOW)
