@@ -6,7 +6,7 @@ Reads:  results/gemini35/<arm>/<case>/t<trial>.json  (main runs, gemini-3.5-flas
         results/runs/<arm>/<case>/t<trial>.json      (earlier partial runs, gemini-3.1-flash-lite)
         results/asb/<arm>/<case>.json              (the ASB sanity run)
 Writes: report/generated/main_table.tex      A vs B vs C on the test split (all 7 metrics)
-        report/generated/ablation_table.tex  every arm on the dev split
+        report/generated/ablation_table.tex  every arm on the test split
         report/generated/asb_table.tex       ASB sample, A vs C
         report/generated/earlier_table.tex   earlier partial runs on gemini-3.1-flash-lite
         report/generated/asr_test.pdf/.png   attack success with 95% Wilson intervals (test)
@@ -150,7 +150,8 @@ def main():
     (OUT / "main_table.tex").write_text(metric_table(
         test, MAIN_ARMS, "Main result on the held-out test split (3 trials per case).", "tab:main"))
     (OUT / "ablation_table.tex").write_text(metric_table(
-        dev, ALL_ARMS, "All configurations on the dev split (1 trial per case).", "tab:ablation"))
+        test, ALL_ARMS, "Ablation: every configuration on the test split. A, B and C have 3 trials "
+        "per case; the ablations have as many as the quota allowed (see run counts).", "tab:ablation"))
     (OUT / "asb_table.tex").write_text(asb_table(asb))
     # Earlier partial runs on gemini-3.1-flash-lite (before the model switch): A and B on test.
     t31 = _summary("test", RUNS_31)
@@ -160,7 +161,7 @@ def main():
         "Earlier partial run on gemini-3.1-flash-lite (test split), stopped by outages and the "
         "daily quota before C was run.", "tab:earlier"))
     asr_figure(test, MAIN_ARMS, "asr_test", "Test split")
-    asr_figure(dev, ALL_ARMS, "asr_dev", "Dev split, all configurations")
+    asr_figure(test, ALL_ARMS, "asr_ablation", "Test split, all configurations")
     (OUT / "numbers.json").write_text(json.dumps({"test": test, "dev": dev, "asb": asb, "earlier_gemini31": earlier}, indent=2))
     for split, s in (("test", test), ("dev", dev)):
         done = ", ".join(f"{a} ({s[a]['runs']} runs)" for a in s) or "none"
