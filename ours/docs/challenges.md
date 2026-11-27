@@ -147,3 +147,12 @@ nothing to stop, and the intervals of A, B and C overlap.
 
 **Laptop sleep stopped the runner.** The quota checks paused for hours twice when the laptop
 slept (Nov 24 9:37-11:26 pm, Nov 25 4:15 pm-12:25 am).
+
+**Spreading the runs over many keys (Nov 26).** To finish all 294 test runs (A, B, C and the four
+ablations, 42 each) in one day we used 11 keys (mostly from separate projects), each limited to 500 calls
+a day. Each key got its own slice (configuration and cases) so no run was done twice, and a key
+that ran out handed its slice to one with quota left. Three things went wrong: a quota check
+that made one call passed on keys that were already out (the next real run got 429), one
+key turned out to be in an already-exhausted project, and the laptop slept for 30 minutes with the
+lid closed, which timed out the runs in progress. Every run that ended with an API error was
+re-run, not counted.
